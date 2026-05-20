@@ -21,7 +21,7 @@ binding = "AI"
 # Environment variables (non-secret)
 [vars]
 SITE_URL = "https://example.com"
-R2_PUBLIC_URL = "https://media.example.com"
+R2_PUBLIC_URL = "https://pub-4f95703f5b2b434c906890b43ed7b7e7.r2.dev"
 JWT_ISSUER = "cloudcms"
 
 # Secrets (set via: wrangler secret put JWT_SECRET)
