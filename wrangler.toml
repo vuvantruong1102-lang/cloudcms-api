@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "cloudcms"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "00c2d270-b0af-474c-9a7a-2f4cfc86e40e"
 
 # R2 Bucket for media
 [[r2_buckets]]
