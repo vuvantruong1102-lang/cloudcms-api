@@ -1,0 +1,29 @@
+name = "cloudcms-api"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "cloudcms"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+# R2 Bucket for media
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "cloudcms-media"
+
+# Workers AI (optional - cho tính năng AI gợi ý SEO)
+[ai]
+binding = "AI"
+
+# Environment variables (non-secret)
+[vars]
+SITE_URL = "https://example.com"
+R2_PUBLIC_URL = "https://media.example.com"
+JWT_ISSUER = "cloudcms"
+
+# Secrets (set via: wrangler secret put JWT_SECRET)
+# - JWT_SECRET
+# - OPENAI_API_KEY (nếu dùng OpenAI thay Workers AI)

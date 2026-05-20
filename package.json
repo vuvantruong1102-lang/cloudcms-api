@@ -1,0 +1,24 @@
+{
+  "name": "cloudcms-api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create cloudcms",
+    "db:migrate:local": "wrangler d1 execute cloudcms --local --file=../../migrations/0001_initial.sql",
+    "db:migrate:remote": "wrangler d1 execute cloudcms --remote --file=../../migrations/0001_initial.sql",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0",
+    "@hono/zod-validator": "^0.4.0",
+    "zod": "^3.23.0",
+    "nanoid": "^5.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^3.95.0"
+  }
+}
