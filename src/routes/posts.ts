@@ -5,6 +5,7 @@ import type { AppEnv, Post } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { generateId, slugify, now, countWords, readingTimeMinutes } from '../lib/utils';
 import { analyzeSeo } from '../lib/seo';
+import { pingIndexNowAsync } from '../lib/indexnow';
 
 const app = new Hono<AppEnv>();
 
@@ -38,6 +39,15 @@ const postInputSchema = z.object({
   category_id: z.string().optional().nullable(),
   tag_ids: z.array(z.string()).optional(),
 });
+
+// Helper: build các URL cần ping IndexNow khi bài thay đổi
+function getPingUrls(siteUrl: string, slug: string): string[] {
+  return [
+    `${siteUrl}/news/${slug}.html`,
+    `${siteUrl}/news.html`,
+    `${siteUrl}/sitemap.xml`,
+  ];
+}
 
 // List bài viết với filter & pagination
 app.get('/', async (c) => {
@@ -190,6 +200,11 @@ app.post('/', zValidator('json', postInputSchema), async (c) => {
     await c.env.DB.batch(stmts);
   }
 
+  // Ping IndexNow nếu bài tạo ra đã ở trạng thái published
+  if (data.status === 'published') {
+    pingIndexNowAsync(c.env, c.executionCtx, getPingUrls(c.env.SITE_URL, slug));
+  }
+
   return c.json({ id, slug, seo_score: seo.score });
 });
 
@@ -300,6 +315,31 @@ app.put('/:id', zValidator('json', postInputSchema.partial()), async (c) => {
     }
   }
 
+  // Ping IndexNow trong các trường hợp:
+  // 1. Bài chuyển từ trạng thái khác → published
+  // 2. Bài đang published và title/content/meta/og thay đổi
+  // 3. Bài đang published và slug đổi → ping cả slug cũ lẫn slug mới
+  const wasPublished = existing.status === 'published';
+  const isPublishedNow = (data.status ?? existing.status) === 'published';
+  const contentChanged =
+    data.title !== undefined ||
+    data.content_html !== undefined ||
+    data.meta_title !== undefined ||
+    data.meta_description !== undefined ||
+    data.og_title !== undefined ||
+    data.og_description !== undefined ||
+    data.og_image_url !== undefined;
+  const slugChanged = newSlug !== existing.slug;
+
+  if (isPublishedNow && (!wasPublished || contentChanged || slugChanged)) {
+    const urls = getPingUrls(c.env.SITE_URL, newSlug);
+    if (slugChanged && wasPublished) {
+      // Ping cả URL cũ để Google biết URL đã đổi
+      urls.push(`${c.env.SITE_URL}/news/${existing.slug}.html`);
+    }
+    pingIndexNowAsync(c.env, c.executionCtx, urls);
+  }
+
   return c.json({ id, slug: newSlug, seo_score: seo.score });
 });
 
@@ -308,12 +348,24 @@ app.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const hard = c.req.query('hard') === '1';
 
+  // Lấy slug để ping IndexNow trước khi xóa
+  const existing = await c.env.DB.prepare('SELECT slug, status FROM posts WHERE id = ?').bind(id).first<{ slug: string; status: string }>();
+
   if (hard) {
     await c.env.DB.prepare('DELETE FROM posts WHERE id = ?').bind(id).run();
   } else {
     await c.env.DB.prepare('UPDATE posts SET status = ?, updated_at = ? WHERE id = ?')
       .bind('archived', now(), id)
       .run();
+  }
+
+  // Nếu bài đang publish (giờ bị xóa/archive) → ping sitemap để Google update
+  if (existing && existing.status === 'published') {
+    pingIndexNowAsync(c.env, c.executionCtx, [
+      `${c.env.SITE_URL}/news/${existing.slug}.html`,
+      `${c.env.SITE_URL}/news.html`,
+      `${c.env.SITE_URL}/sitemap.xml`,
+    ]);
   }
 
   return c.json({ ok: true });
