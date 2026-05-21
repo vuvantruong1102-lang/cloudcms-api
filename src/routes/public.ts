@@ -3,6 +3,10 @@ import type { AppEnv } from '../types';
 
 const app = new Hono<AppEnv>();
 
+// ============================================================
+// POSTS (giữ nguyên từ phiên bản cũ)
+// ============================================================
+
 // Lấy bài viết theo slug (cho website chính)
 app.get('/posts/:slug', async (c) => {
   const slug = c.req.param('slug');
@@ -66,7 +70,108 @@ app.get('/posts', async (c) => {
   return c.json({ items: items.results, page, limit });
 });
 
-// Sitemap XML
+// ============================================================
+// PRODUCTS (mới)
+// ============================================================
+
+// Lấy 1 sản phẩm theo slug
+// Dùng cho trang /products/<slug>.html
+app.get('/products/:slug', async (c) => {
+  const slug = c.req.param('slug');
+  const product = await c.env.DB.prepare(
+    `SELECT * FROM products WHERE slug = ? AND status != 'discontinued'`
+  )
+    .bind(slug)
+    .first();
+
+  if (!product) return c.json({ error: 'Not found' }, 404);
+
+  // Tăng view count async
+  c.executionCtx.waitUntil(
+    c.env.DB.prepare('UPDATE products SET view_count = view_count + 1 WHERE id = ?')
+      .bind((product as any).id)
+      .run()
+  );
+
+  // Tính active sale (server tính sẵn để frontend nhẹ tải)
+  const now = Date.now();
+  const p = product as any;
+  const sale_active = !!(
+    p.sale_price &&
+    p.sale_price > 0 &&
+    p.sale_price < p.price &&
+    (!p.sale_starts_at || p.sale_starts_at <= now) &&
+    (!p.sale_ends_at || p.sale_ends_at > now)
+  );
+  const effective_price = sale_active ? p.sale_price : p.price;
+  const discount_percent = sale_active
+    ? Math.round(((p.price - p.sale_price) / p.price) * 100)
+    : 0;
+
+  // Cache 60s edge để giảm load D1
+  return new Response(
+    JSON.stringify({
+      ...product,
+      sale_active,
+      effective_price,
+      discount_percent,
+    }),
+    {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'public, max-age=30, s-maxage=60',
+      },
+    }
+  );
+});
+
+// List sản phẩm (cho trang sản phẩm tổng, nếu cần)
+app.get('/products', async (c) => {
+  const items = await c.env.DB.prepare(
+    `SELECT id, code, slug, name, short_description,
+            price, sale_price, sale_starts_at, sale_ends_at,
+            featured_image_url, badges_json, status
+     FROM products
+     WHERE status != 'discontinued'
+     ORDER BY updated_at DESC LIMIT 100`
+  ).all();
+
+  return new Response(JSON.stringify({ items: items.results }), {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'public, max-age=60, s-maxage=120',
+    },
+  });
+});
+
+// ============================================================
+// CATEGORIES (mới) - cho trang /news filter
+// ============================================================
+
+app.get('/categories', async (c) => {
+  // Chỉ trả các category có ít nhất 1 bài published
+  const items = await c.env.DB.prepare(
+    `SELECT c.id, c.slug, c.name, c.description,
+            COUNT(p.id) as post_count
+     FROM categories c
+     LEFT JOIN posts p ON p.category_id = c.id AND p.status = 'published'
+     GROUP BY c.id
+     HAVING post_count > 0
+     ORDER BY c.name ASC`
+  ).all();
+
+  return new Response(JSON.stringify({ items: items.results }), {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'public, max-age=300, s-maxage=600',
+    },
+  });
+});
+
+// ============================================================
+// SITEMAP + RSS (giữ nguyên)
+// ============================================================
+
 app.get('/sitemap.xml', async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT slug, updated_at FROM posts
@@ -89,7 +194,6 @@ ${urls}
   return new Response(xml, { headers: { 'Content-Type': 'application/xml; charset=utf-8' } });
 });
 
-// RSS feed
 app.get('/rss.xml', async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT slug, title, excerpt, published_at FROM posts
