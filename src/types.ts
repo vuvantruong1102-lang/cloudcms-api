@@ -9,6 +9,7 @@ export type Bindings = {
   JWT_ISSUER: string;
   JWT_SECRET: string;
   OPENAI_API_KEY?: string;
+  INDEXNOW_KEY?: string;
 };
 
 export type Variables = {

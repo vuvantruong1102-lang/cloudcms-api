@@ -8,6 +8,7 @@ import postsRoutes from './routes/posts';
 import mediaRoutes from './routes/media';
 import categoriesRoutes from './routes/categories';
 import aiRoutes from './routes/ai';
+import aiImageRoutes from './routes/ai-image';
 import publicRoutes from './routes/public';
 
 const app = new Hono<AppEnv>();
@@ -24,7 +25,7 @@ app.use(
   })
 );
 
-app.get('/', (c) => c.json({ name: 'CloudCMS API', version: '0.1.0' }));
+app.get('/', (c) => c.json({ name: 'CloudCMS API', version: '0.2.0' }));
 
 // Public API (đọc bài viết cho website chính)
 app.route('/api/public', publicRoutes);
@@ -35,6 +36,7 @@ app.route('/api/posts', postsRoutes);
 app.route('/api/media', mediaRoutes);
 app.route('/api/categories', categoriesRoutes);
 app.route('/api/ai', aiRoutes);
+app.route('/api/ai-image', aiImageRoutes);
 
 app.onError((err, c) => {
   console.error('Error:', err);
