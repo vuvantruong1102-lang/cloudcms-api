@@ -10,35 +10,51 @@ app.use('*', requireAuth);
 
 // Helper: gọi Workers AI hoặc OpenAI tùy config
 async function runAi(c: any, prompt: string, system?: string): Promise<string> {
+  const messages = [
+    ...(system ? [{ role: 'system', content: system }] : []),
+    { role: 'user', content: prompt },
+  ];
+
   // Ưu tiên OpenAI nếu có key
   if (c.env.OPENAI_API_KEY) {
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${c.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          ...(system ? [{ role: 'system', content: system }] : []),
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.7,
-      }),
-    });
-    const data: any = await resp.json();
-    return data.choices?.[0]?.message?.content?.trim() ?? '';
+    try {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${c.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: c.env.OPENAI_MODEL || 'gpt-4o-mini',
+          messages,
+          temperature: 0.7,
+        }),
+      });
+      const data: any = await resp.json();
+
+      // Nếu OpenAI trả lỗi, log + ném ra để biết lý do (key sai, hết credit, model...)
+      if (!resp.ok || data.error) {
+        const msg = data?.error?.message || `OpenAI HTTP ${resp.status}`;
+        console.error('OpenAI error:', msg);
+        // Không chặn hẳn: rơi xuống Workers AI bên dưới
+        throw new Error('OPENAI_FALLBACK');
+      }
+
+      const text = data.choices?.[0]?.message?.content?.trim();
+      if (text) return text;
+      // OpenAI trả rỗng -> thử Workers AI
+    } catch (e: any) {
+      if (e.message !== 'OPENAI_FALLBACK') console.error('OpenAI fetch fail:', e.message);
+      // rơi xuống Workers AI
+    }
   }
 
-  // Fallback: Workers AI (Llama 3.1)
-  const result: any = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-    messages: [
-      ...(system ? [{ role: 'system', content: system }] : []),
-      { role: 'user', content: prompt },
-    ],
-  });
-  return (result.response ?? '').trim();
+  // Workers AI (Llama 3.1) — dùng khi không có key HOẶC OpenAI lỗi/rỗng
+  const result: any = await c.env.AI.run('@cf/meta/llama-3.1-8b-instruct', { messages });
+  const llama = (result.response ?? '').trim();
+  if (llama) return llama;
+
+  throw new Error('AI không tạo được nội dung. Kiểm tra OPENAI_API_KEY (credit/hạn mức) hoặc thử lại.');
 }
 
 // Gợi ý meta description từ nội dung bài
