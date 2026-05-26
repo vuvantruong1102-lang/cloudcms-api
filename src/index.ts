@@ -12,6 +12,7 @@ import aiImageRoutes from './routes/ai-image';
 import publicRoutes from './routes/public';
 import contentRoutes from './routes/content';
 import templatesRoutes from './routes/templates';
+import videosRoutes from './routes/videos';
 
 const app = new Hono<AppEnv>();
 
@@ -41,6 +42,7 @@ app.route('/api/ai', aiRoutes);
 app.route('/api/ai-image', aiImageRoutes);
 app.route('/api/content', contentRoutes);
 app.route('/api/templates', templatesRoutes);
+app.route('/api/videos', videosRoutes);
 
 app.onError((err, c) => {
   console.error('Error:', err);
