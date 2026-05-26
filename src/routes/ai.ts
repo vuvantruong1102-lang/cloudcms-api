@@ -132,4 +132,28 @@ Chỉ trả về đoạn tóm tắt, không giải thích.`;
   return c.json({ summary: result });
 });
 
+// Gợi ý caption mạng xã hội theo nền tảng (Content Manager)
+const PLATFORM_GUIDE: Record<string, string> = {
+  facebook: 'Văn phong thân thiện, emoji vừa phải, 3-6 dòng, kết bằng CTA + 3-5 hashtag.',
+  tiktok: 'Cực ngắn 1-2 dòng bắt trend, nhiều hashtag (#fyp #xuhuong), giọng trẻ trung.',
+  youtube: 'Mô tả video: 1 câu hook, vài dòng mô tả, có link mua hàng, 3-5 hashtag cuối.',
+  zalo: 'Lịch sự, rõ ràng, hướng chốt đơn qua inbox/hotline, ít hashtag.',
+};
+
+app.post('/caption', zValidator('json', z.object({
+  platform: z.enum(['youtube', 'facebook', 'zalo', 'tiktok']),
+  topic: z.string().optional(),
+  productInfo: z.string().optional(),
+})), async (c) => {
+  const { platform, topic, productInfo } = c.req.valid('json');
+  if (!topic && !productInfo) return c.json({ error: 'Cần chủ đề hoặc thông tin sản phẩm' }, 400);
+
+  const guide = PLATFORM_GUIDE[platform] ?? 'Viết caption mạng xã hội tiếng Việt.';
+  const system = `Bạn là chuyên gia content marketing cho Yokool — thương hiệu phụ kiện công nghệ năng lượng di động Made in Vietnam. Viết caption tiếng Việt tự nhiên, đúng nền tảng. ${guide} Chỉ trả về nội dung caption, không giải thích.`;
+  const prompt = `Nền tảng: ${platform}\nChủ đề: ${topic ?? '(không có)'}\nThông tin sản phẩm: ${productInfo ?? '(không có)'}`;
+
+  const result = await runAi(c, prompt, system);
+  return c.json({ caption: result });
+});
+
 export default app;
