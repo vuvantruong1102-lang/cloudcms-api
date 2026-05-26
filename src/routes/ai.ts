@@ -156,4 +156,38 @@ app.post('/caption', zValidator('json', z.object({
   return c.json({ caption: result });
 });
 
+// Viết bài dài từ dàn ý / chủ đề (cho trang soạn bài Website)
+app.post('/write-article', zValidator('json', z.object({
+  topic: z.string().min(3),
+  keyword: z.string().optional(),
+  outline: z.string().optional(),
+  tone: z.string().optional(),
+})), async (c) => {
+  const { topic, keyword, outline, tone } = c.req.valid('json');
+  const system = `Bạn là cây bút content SEO tiếng Việt cho Yokool — thương hiệu phụ kiện công nghệ năng lượng di động Made in Vietnam.
+Viết một bài blog hoàn chỉnh, chuẩn SEO, văn phong ${tone || 'chuyên nghiệp nhưng gần gũi'}.
+Yêu cầu:
+- Mở bài hấp dẫn, thân bài chia nhiều đoạn rõ ràng, kết bài có CTA nhẹ.
+- Dùng tiêu đề phụ (đánh dấu bằng ## cho h2, ### cho h3).
+- Tự nhiên, không nhồi nhét từ khóa.
+${keyword ? `- Từ khóa chính cần xuất hiện hợp lý: "${keyword}"` : ''}
+Trả về nội dung bài viết dạng markdown, KHÔNG kèm giải thích.`;
+  const prompt = `Chủ đề: ${topic}${outline ? `\n\nDàn ý mong muốn:\n${outline}` : ''}`;
+  const result = await runAi(c, prompt, system);
+  return c.json({ content: result });
+});
+
+// Cải thiện / viết lại một đoạn cho hay hơn
+app.post('/improve', zValidator('json', z.object({
+  text: z.string().min(5),
+  instruction: z.string().optional(),
+})), async (c) => {
+  const { text, instruction } = c.req.valid('json');
+  const system = `Bạn là biên tập viên tiếng Việt. Viết lại đoạn văn cho mạch lạc, hấp dẫn, đúng chính tả.
+${instruction ? `Hướng dẫn: ${instruction}` : 'Giữ nguyên ý, cải thiện cách diễn đạt.'}
+Chỉ trả về đoạn văn đã sửa, không giải thích.`;
+  const result = await runAi(c, stripHtml(text), system);
+  return c.json({ text: result });
+});
+
 export default app;
