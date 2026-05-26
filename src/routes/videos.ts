@@ -37,16 +37,77 @@ function getR2Client(c: any): { client: AwsClient; endpoint: string; bucket: str
   return { client, endpoint, bucket: R2_BUCKET };
 }
 
-// ---------- List ----------
+// ---------- List (lọc theo folder) ----------
 app.get('/', async (c) => {
   const search = c.req.query('q');
+  const folderId = c.req.query('folder'); // 'root' hoặc id; bỏ qua nếu đang search
   let where = '1=1';
   const params: any[] = [];
-  if (search) { where += ' AND (title LIKE ? OR tags LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  if (search) {
+    where += ' AND (title LIKE ? OR tags LIKE ?)'; params.push(`%${search}%`, `%${search}%`);
+  } else if (folderId && folderId !== 'all') {
+    if (folderId === 'root') where += ' AND folder_id IS NULL';
+    else { where += ' AND folder_id = ?'; params.push(folderId); }
+  }
   const rows = await c.env.DB.prepare(
     `SELECT * FROM videos WHERE ${where} ORDER BY created_at DESC`
   ).bind(...params).all();
   return c.json({ items: rows.results ?? [] });
+});
+
+// ---------- Folders ----------
+app.get('/folders/list', async (c) => {
+  const rows = await c.env.DB.prepare(
+    `SELECT id, name, parent_id, created_at FROM video_folders ORDER BY name`
+  ).all();
+  return c.json({ items: rows.results ?? [] });
+});
+
+app.post('/folders', zValidator('json', z.object({
+  name: z.string().min(1).max(120),
+  parent_id: z.string().optional().nullable(),
+})), async (c) => {
+  const { name, parent_id } = c.req.valid('json');
+  const id = generateId('vfd');
+  const ts = now();
+  await c.env.DB.prepare(
+    `INSERT INTO video_folders (id, name, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`
+  ).bind(id, name, parent_id ?? null, ts, ts).run();
+  return c.json({ id });
+});
+
+app.put('/folders/:id', zValidator('json', z.object({
+  name: z.string().min(1).max(120).optional(),
+  parent_id: z.string().optional().nullable(),
+})), async (c) => {
+  const id = c.req.param('id');
+  const { name, parent_id } = c.req.valid('json');
+  const fields: string[] = []; const values: any[] = [];
+  if (name !== undefined) { fields.push('name = ?'); values.push(name); }
+  if (parent_id !== undefined) { fields.push('parent_id = ?'); values.push(parent_id); }
+  if (!fields.length) return c.json({ ok: true });
+  fields.push('updated_at = ?'); values.push(now());
+  await c.env.DB.prepare(`UPDATE video_folders SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
+  return c.json({ ok: true });
+});
+
+// Xoá folder: video bên trong chuyển về gốc (folder_id = NULL), folder con cascade
+app.delete('/folders/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('UPDATE videos SET folder_id = NULL WHERE folder_id = ?').bind(id).run();
+  await c.env.DB.prepare('DELETE FROM video_folders WHERE id = ?').bind(id).run();
+  return c.json({ ok: true });
+});
+
+// Di chuyển video vào folder (hoặc về gốc với folder_id = null)
+app.put('/:id/move', zValidator('json', z.object({
+  folder_id: z.string().optional().nullable(),
+})), async (c) => {
+  const id = c.req.param('id');
+  const { folder_id } = c.req.valid('json');
+  await c.env.DB.prepare('UPDATE videos SET folder_id = ?, updated_at = ? WHERE id = ?')
+    .bind(folder_id ?? null, now(), id).run();
+  return c.json({ ok: true });
 });
 
 // ---------- Bước 1: xin presigned URL để upload thẳng lên R2 ----------
@@ -92,6 +153,7 @@ app.post('/', zValidator('json', z.object({
   duration: z.number().optional().nullable(),
   note: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
+  folder_id: z.string().optional().nullable(),
 })), async (c) => {
   const data = c.req.valid('json');
   const user = c.get('user');
@@ -109,12 +171,12 @@ app.post('/', zValidator('json', z.object({
 
   await c.env.DB.prepare(
     `INSERT INTO videos (id, title, source, drive_url, drive_file_id, r2_key, size_bytes, mime_type,
-       thumbnail, duration, note, tags, uploaded_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       thumbnail, duration, note, tags, folder_id, uploaded_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(id, data.title, source, urlForOpen, driveId, data.r2_key ?? null,
          data.size_bytes ?? null, data.mime_type ?? null,
          data.thumbnail ?? null, data.duration ?? null, data.note ?? null, data.tags ?? null,
-         user.id, ts, ts).run();
+         data.folder_id ?? null, user.id, ts, ts).run();
 
   return c.json({ id });
 });
