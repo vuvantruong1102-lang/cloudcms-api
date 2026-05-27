@@ -21,6 +21,7 @@ app.post('/upload', async (c) => {
   const file = formData.get('file');
   const altText = (formData.get('alt') as string | null) ?? null;
   const caption = (formData.get('caption') as string | null) ?? null;
+  const folderId = (formData.get('folder_id') as string | null) || null;
 
   if (!(file instanceof File)) return c.json({ error: 'Thiếu file' }, 400);
 
@@ -52,10 +53,10 @@ app.post('/upload', async (c) => {
   const height = Number(formData.get('height')) || null;
 
   await c.env.DB.prepare(
-    `INSERT INTO media (id, r2_key, filename, mime_type, size_bytes, width, height, alt_text, caption, url, uploaded_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO media (id, r2_key, filename, mime_type, size_bytes, width, height, alt_text, caption, url, folder_id, uploaded_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-    .bind(id, r2Key, file.name, file.type, file.size, width, height, altText, caption, publicUrl, user.id, now())
+    .bind(id, r2Key, file.name, file.type, file.size, width, height, altText, caption, publicUrl, folderId, user.id, now())
     .run();
 
   return c.json({
@@ -77,6 +78,12 @@ app.get('/', async (c) => {
   if (search) {
     where += ' AND (filename LIKE ? OR alt_text LIKE ?)';
     params.push(`%${search}%`, `%${search}%`);
+  } else {
+    const folder = c.req.query('folder');
+    if (folder && folder !== 'all') {
+      if (folder === 'root') where += ' AND folder_id IS NULL';
+      else { where += ' AND folder_id = ?'; params.push(folder); }
+    }
   }
 
   const items = await c.env.DB.prepare(
