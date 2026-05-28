@@ -22,6 +22,8 @@ binding = "AI"
 [vars]
 SITE_URL = "https://example.com"
 R2_PUBLIC_URL = "https://pub-4f95703f5b2b434c906890b43ed7b7e7.r2.dev"
+R2_ACCOUNT_ID = "1c4d476a777d00e37e8a366162acda5c"
+R2_BUCKET = "cloudcms-media"
 JWT_ISSUER = "cloudcms"
 
 # Secrets (set via: wrangler secret put JWT_SECRET)
