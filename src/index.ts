@@ -14,6 +14,8 @@ import contentRoutes from './routes/content';
 import templatesRoutes from './routes/templates';
 import videosRoutes from './routes/videos';
 import mediaFoldersRoutes from './routes/media-folders';
+import documentsRoutes from './routes/documents';
+import libraryRoutes from './routes/library';
 
 const app = new Hono<AppEnv>();
 
@@ -45,6 +47,8 @@ app.route('/api/content', contentRoutes);
 app.route('/api/templates', templatesRoutes);
 app.route('/api/videos', videosRoutes);
 app.route('/api/media-folders', mediaFoldersRoutes);
+app.route('/api/documents', documentsRoutes);
+app.route('/api/library', libraryRoutes);
 
 app.onError((err, c) => {
   console.error('Error:', err);
