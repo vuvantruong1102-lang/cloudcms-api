@@ -182,20 +182,33 @@ app.post('/', zValidator('json', z.object({
 });
 
 // ---------- Tải về: R2 ký URL GET tạm thời (kể cả bucket private) ----------
+// Thêm response-content-disposition=attachment để trình duyệt (đặc biệt iOS Safari)
+// buộc TẢI FILE thay vì phát video inline.
 app.get('/:id/download', async (c) => {
   const id = c.req.param('id');
-  const v = await c.env.DB.prepare('SELECT source, drive_url, r2_key FROM videos WHERE id = ?')
-    .bind(id).first<{ source: string; drive_url: string; r2_key: string | null }>();
+  const v = await c.env.DB.prepare('SELECT source, drive_url, r2_key, title, mime_type FROM videos WHERE id = ?')
+    .bind(id).first<{ source: string; drive_url: string; r2_key: string | null; title: string | null; mime_type: string | null }>();
   if (!v) return c.json({ error: 'Not found' }, 404);
 
   if (v.source === 'r2' && v.r2_key) {
     const r2 = getR2Client(c);
     if (!r2) return c.json({ error: 'R2 chưa cấu hình' }, 500);
+
+    // Tên file tải về: lấy title, làm sạch, gắn đuôi từ r2_key
+    const ext = v.r2_key.split('.').pop()?.toLowerCase() || 'mp4';
+    const base = (v.title || 'video').replace(/[\/\\?%*:|"<>]/g, '').trim() || 'video';
+    const downloadName = base.toLowerCase().endsWith('.' + ext) ? base : `${base}.${ext}`;
+
+    const url = new URL(`${r2.endpoint}/${r2.bucket}/${v.r2_key}`);
+    // Ghi đè header phản hồi qua query (S3/R2 hỗ trợ) — phải có TRƯỚC khi ký
+    url.searchParams.set('response-content-disposition', `attachment; filename="${encodeURIComponent(downloadName)}"`);
+    if (v.mime_type) url.searchParams.set('response-content-type', v.mime_type);
+
     const signed = await r2.client.sign(
-      new Request(`${r2.endpoint}/${r2.bucket}/${v.r2_key}`, { method: 'GET' }),
+      new Request(url.toString(), { method: 'GET' }),
       { aws: { signQuery: true } }
     );
-    return c.json({ download_url: signed.url });
+    return c.json({ download_url: signed.url, filename: downloadName });
   }
   return c.json({ download_url: v.drive_url });
 });
